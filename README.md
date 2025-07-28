@@ -90,6 +90,17 @@ lib/
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-## License
+## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International License**.
+
+You may:
+- ✅ View the code
+- ✅ Share the link to this repository **with credit**
+
+You may **NOT**:
+- ❌ Modify or rebrand the software
+- ❌ Use it commercially
+- ❌ Redistribute altered versions
+
+🔒 Unauthorized use may result in DMCA action.
