@@ -6,6 +6,7 @@ import 'package:excel/excel.dart' as excel;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
+import 'dart:async';
 import 'dart:developer' as developer;
 import 'student_exam_registration_page.dart';
 
@@ -42,6 +43,9 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
   List<String> departments = [];
   List<int> semesters = [];
   Map<String, List<Map<String, dynamic>>> studentCourses = {};
+  Map<String, int> _departmentCounts = {};
+  Map<int, int> _semesterCounts = {};
+  Map<String, int> _regStatusCounts = {};
 
   // Animation controllers
   late AnimationController _fadeInController;
@@ -53,6 +57,7 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
 
   // Current section for sidebar
   String _currentSection = 'all';
+  Timer? _debounce;
 
   // Add clear filters method early in the class
   void _clearFilters() {
@@ -113,6 +118,7 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
   void dispose() {
     _fadeInController.dispose();
     _slideController.dispose();
+    _debounce?.cancel();
     super.dispose();
   }
 
@@ -198,6 +204,7 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
 
           // Filter the students
           filterStudents();
+          _calculateFilterCounts();
         });
       }
     } catch (error) {
@@ -1521,41 +1528,61 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
     );
   }
 
+  void _calculateFilterCounts() {
+    _departmentCounts.clear();
+    _semesterCounts.clear();
+    _regStatusCounts.clear();
+
+    _regStatusCounts['Regular'] = 0;
+    _regStatusCounts['Backlog'] = 0;
+    _regStatusCounts['Not Registered'] = 0;
+
+    for (final student in students) {
+      final deptId = student['dept_id'].toString();
+      final semester = student['semester'] as int;
+      final studentId = student['student_reg_no'] as String;
+      final courses = studentCourses[studentId] ?? [];
+
+      _departmentCounts[deptId] = (_departmentCounts[deptId] ?? 0) + 1;
+      _semesterCounts[semester] = (_semesterCounts[semester] ?? 0) + 1;
+
+      if (courses.isEmpty) {
+        _regStatusCounts['Not Registered'] =
+            (_regStatusCounts['Not Registered'] ?? 0) + 1;
+      } else {
+        final hasBacklog = courses.any((c) => c['is_reguler'] == false);
+        if (hasBacklog) {
+          _regStatusCounts['Backlog'] = (_regStatusCounts['Backlog'] ?? 0) + 1;
+        } else {
+          _regStatusCounts['Regular'] = (_regStatusCounts['Regular'] ?? 0) + 1;
+        }
+      }
+    }
+  }
+
   String _getCountForFilter(String id) {
     if (id == 'all') return students.length.toString();
 
     if (id.startsWith('dept_')) {
       final dept = id.substring(5);
-      return students.where((s) => s['dept_id'] == dept).length.toString();
+      return (_departmentCounts[dept] ?? 0).toString();
     }
 
     if (id.startsWith('sem_')) {
       final sem = int.parse(id.substring(4));
-      return students.where((s) => s['semester'] == sem).length.toString();
+      return (_semesterCounts[sem] ?? 0).toString();
     }
 
     if (id == 'reg_regular') {
-      return students
-          .where((student) {
-            final studentId = student['student_reg_no'] as String;
-            final courses = studentCourses[studentId] ?? [];
-            return courses.isNotEmpty &&
-                courses.every((course) => course['is_reguler'] == true);
-          })
-          .length
-          .toString();
+      return (_regStatusCounts['Regular'] ?? 0).toString();
     }
 
     if (id == 'reg_backlog') {
-      return students
-          .where((student) {
-            final studentId = student['student_reg_no'] as String;
-            final courses = studentCourses[studentId] ?? [];
-            return courses.isNotEmpty &&
-                courses.any((course) => course['is_reguler'] == false);
-          })
-          .length
-          .toString();
+      return (_regStatusCounts['Backlog'] ?? 0).toString();
+    }
+    
+    if (id == 'reg_none') {
+      return (_regStatusCounts['Not Registered'] ?? 0).toString();
     }
 
     return '0';
@@ -1616,9 +1643,12 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
                 ),
               ),
               onChanged: (value) {
-                setState(() {
-                  searchQuery = value;
-                  filterStudents();
+                if (_debounce?.isActive ?? false) _debounce?.cancel();
+                _debounce = Timer(const Duration(milliseconds: 300), () {
+                  setState(() {
+                    searchQuery = value;
+                    filterStudents();
+                  });
                 });
               },
             ),
@@ -1658,9 +1688,12 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
           contentPadding: const EdgeInsets.symmetric(vertical: 12),
         ),
         onChanged: (value) {
-          setState(() {
-            searchQuery = value;
-            filterStudents();
+          if (_debounce?.isActive ?? false) _debounce?.cancel();
+          _debounce = Timer(const Duration(milliseconds: 300), () {
+            setState(() {
+              searchQuery = value;
+              filterStudents();
+            });
           });
         },
       ),
@@ -1983,225 +2016,22 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(1),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(15),
-              child: Theme(
-                data: Theme.of(context).copyWith(
-                  dividerColor: Colors.grey.shade200,
-                  dataTableTheme: DataTableThemeData(
-                    headingTextStyle: GoogleFonts.poppins(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue.shade800,
-                    ),
-                    dataTextStyle: GoogleFonts.poppins(),
-                    headingRowHeight: 56,
-                    dataRowHeight: 64,
-                    dividerThickness: 1,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(15),
+            child: Column(
+              children: [
+                _buildStudentListHeader(),
+                SizedBox(
+                  height: 400, // Fixed height for the list
+                  child: ListView.builder(
+                    itemCount: filteredStudents.length,
+                    itemBuilder: (context, index) {
+                      final student = filteredStudents[index];
+                      return _buildStudentListRow(student);
+                    },
                   ),
                 ),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    // Create a fixed-height container to prevent layout shifts
-                    // during scrolling which can cause performance issues
-                    final double tableHeight = filteredStudents.length > 5
-                        ? 400 // Fixed height for many rows
-                        : filteredStudents.length * 70.0 +
-                            56; // Height for fewer rows
-
-                    return SizedBox(
-                      height: tableHeight,
-                      child: SingleChildScrollView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        child: DataTable(
-                          headingRowColor:
-                              WidgetStateProperty.resolveWith<Color>(
-                            (Set<WidgetState> states) => Colors.blue.shade50,
-                          ),
-                          columnSpacing: 16,
-                          horizontalMargin: 20,
-                          dataRowMaxHeight: 70,
-                          showCheckboxColumn: true,
-                          columns: [
-                            DataColumn(
-                                label: const SizedBox.shrink(),
-                                onSort: (columnIndex, ascending) {
-                                  setState(() {
-                                    selectAllChecked = !selectAllChecked;
-
-                                    if (selectAllChecked) {
-                                      // Select all filtered students
-                                      selectedStudentIds = filteredStudents
-                                          .map((s) =>
-                                              s['student_reg_no'] as String)
-                                          .toSet();
-                                    } else {
-                                      // Clear selection
-                                      selectedStudentIds.clear();
-                                    }
-                                  });
-                                }),
-                            const DataColumn(label: Text('Reg No')),
-                            const DataColumn(label: Text('Name')),
-                            const DataColumn(label: Text('Department')),
-                            const DataColumn(label: Text('Semester')),
-                            const DataColumn(label: Text('Status')),
-                            const DataColumn(label: Text('Actions')),
-                          ],
-                          // Optimize DataRow creation by using reusable objects where possible
-                          rows: List.generate(
-                            filteredStudents.length,
-                            (index) {
-                              final student = filteredStudents[index];
-                              final studentId =
-                                  student['student_reg_no'] as String;
-                              final courses = studentCourses[studentId] ?? [];
-                              final isSelected =
-                                  selectedStudentIds.contains(studentId);
-
-                              bool hasBacklog = false;
-                              String statusText = 'Not Registered';
-                              Color statusColor = Colors.grey;
-
-                              if (courses.isNotEmpty) {
-                                hasBacklog = courses.any(
-                                    (course) => course['is_reguler'] == false);
-                                if (hasBacklog) {
-                                  statusText = 'Backlog';
-                                  statusColor = Colors.orange;
-                                } else {
-                                  statusText = 'Regular';
-                                  statusColor = Colors.green;
-                                }
-                              }
-
-                              return DataRow(
-                                selected: isSelected,
-                                onSelectChanged: (bool? selected) {
-                                  setState(() {
-                                    if (selected ?? false) {
-                                      selectedStudentIds.add(studentId);
-                                    } else {
-                                      selectedStudentIds.remove(studentId);
-                                      // Update selectAll checkbox if needed
-                                      if (selectAllChecked) {
-                                        selectAllChecked = false;
-                                      }
-                                    }
-                                  });
-                                },
-                                cells: [
-                                  // Removed the redundant checkbox here
-                                  const DataCell(SizedBox.shrink()),
-                                  DataCell(
-                                    Text(
-                                      studentId,
-                                      style: GoogleFonts.poppins(
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                                  DataCell(
-                                    Text(
-                                      student['student_name'] as String,
-                                      style: GoogleFonts.poppins(),
-                                    ),
-                                  ),
-                                  DataCell(
-                                    Text(
-                                      student['dept_id'] as String,
-                                      style: GoogleFonts.poppins(),
-                                    ),
-                                  ),
-                                  DataCell(
-                                    Text(
-                                      student['semester'].toString(),
-                                      style: GoogleFonts.poppins(),
-                                    ),
-                                  ),
-                                  DataCell(
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: statusColor.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(color: statusColor),
-                                      ),
-                                      child: Text(
-                                        statusText,
-                                        style: GoogleFonts.poppins(
-                                          color: statusColor,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  DataCell(
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        IconButton(
-                                          icon: const Icon(Icons.visibility,
-                                              size: 20),
-                                          tooltip: 'View Courses',
-                                          onPressed: () =>
-                                              _showCoursesDialog(student),
-                                          splashRadius: 24,
-                                        ),
-                                        IconButton(
-                                          icon:
-                                              const Icon(Icons.edit, size: 20),
-                                          tooltip: 'Edit Student',
-                                          onPressed: () =>
-                                              _showEditDialog(student),
-                                          splashRadius: 24,
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(Icons.assignment,
-                                              size: 20),
-                                          tooltip: 'Exam Registration',
-                                          onPressed: () {
-                                            Navigator.of(context).push(
-                                              MaterialPageRoute(
-                                                builder: (context) =>
-                                                    StudentExamRegistrationPage(
-                                                  studentId: studentId,
-                                                ),
-                                              ),
-                                            );
-                                          },
-                                          splashRadius: 24,
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(Icons.delete,
-                                              size: 20, color: Colors.red),
-                                          tooltip: 'Delete Student',
-                                          onPressed: () {
-                                            setState(() {
-                                              selectedStudentIds = {studentId};
-                                            });
-                                            _showDeleteConfirmation();
-                                          },
-                                          splashRadius: 24,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
+              ],
             ),
           ),
         ),
@@ -2223,6 +2053,168 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
             child: const Icon(Icons.add),
           )
         : const SizedBox.shrink();
+  }
+
+  Widget _buildStudentListHeader() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        border: Border(
+          bottom: BorderSide(color: Colors.grey.shade200),
+        ),
+      ),
+      child: Row(
+        children: [
+          Checkbox(
+            value: selectAllChecked,
+            onChanged: (value) {
+              setState(() {
+                selectAllChecked = value ?? false;
+                if (selectAllChecked) {
+                  selectedStudentIds = filteredStudents
+                      .map((s) => s['student_reg_no'] as String)
+                      .toSet();
+                } else {
+                  selectedStudentIds.clear();
+                }
+              });
+            },
+          ),
+          const Expanded(child: Text('Reg No', style: TextStyle(fontWeight: FontWeight.bold))),
+          const Expanded(flex: 2, child: Text('Name', style: TextStyle(fontWeight: FontWeight.bold))),
+          const Expanded(child: Text('Department', style: TextStyle(fontWeight: FontWeight.bold))),
+          const Expanded(child: Text('Semester', style: TextStyle(fontWeight: FontWeight.bold))),
+          const Expanded(child: Text('Status', style: TextStyle(fontWeight: FontWeight.bold))),
+          const SizedBox(width: 120, child: Text('Actions', style: TextStyle(fontWeight: FontWeight.bold))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStudentListRow(Map<String, dynamic> student) {
+    final studentId = student['student_reg_no'] as String;
+    final courses = studentCourses[studentId] ?? [];
+    final isSelected = selectedStudentIds.contains(studentId);
+
+    bool hasBacklog = false;
+    String statusText = 'Not Registered';
+    Color statusColor = Colors.grey;
+
+    if (courses.isNotEmpty) {
+      hasBacklog = courses.any((course) => course['is_reguler'] == false);
+      if (hasBacklog) {
+        statusText = 'Backlog';
+        statusColor = Colors.orange;
+      } else {
+        statusText = 'Regular';
+        statusColor = Colors.green;
+      }
+    }
+
+    return InkWell(
+      onTap: () {
+        setState(() {
+          if (isSelected) {
+            selectedStudentIds.remove(studentId);
+          } else {
+            selectedStudentIds.add(studentId);
+          }
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.blue.shade50 : Colors.transparent,
+          border: Border(
+            bottom: BorderSide(color: Colors.grey.shade200),
+          ),
+        ),
+        child: Row(
+          children: [
+            Checkbox(
+              value: isSelected,
+              onChanged: (value) {
+                setState(() {
+                  if (value ?? false) {
+                    selectedStudentIds.add(studentId);
+                  } else {
+                    selectedStudentIds.remove(studentId);
+                  }
+                });
+              },
+            ),
+            Expanded(child: Text(studentId)),
+            Expanded(flex: 2, child: Text(student['student_name'] as String)),
+            Expanded(child: Text(student['dept_id'] as String)),
+            Expanded(child: Text(student['semester'].toString())),
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: statusColor),
+                ),
+                child: Text(
+                  statusText,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(
+              width: 120,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.visibility, size: 20),
+                    tooltip: 'View Courses',
+                    onPressed: () => _showCoursesDialog(student),
+                    splashRadius: 24,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.edit, size: 20),
+                    tooltip: 'Edit Student',
+                    onPressed: () => _showEditDialog(student),
+                    splashRadius: 24,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.assignment, size: 20),
+                    tooltip: 'Exam Registration',
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => StudentExamRegistrationPage(
+                            studentId: studentId,
+                          ),
+                        ),
+                      );
+                    },
+                    splashRadius: 24,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete, size: 20, color: Colors.red),
+                    tooltip: 'Delete Student',
+                    onPressed: () {
+                      setState(() {
+                        selectedStudentIds = {studentId};
+                      });
+                      _showDeleteConfirmation();
+                    },
+                    splashRadius: 24,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showCoursesDialog(Map<String, dynamic> student) {
