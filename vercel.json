@@ -1,5 +1,5 @@
 {
-  "buildCommand": "flutter/bin/flutter build web",
+  "buildCommand": "flutter/bin/flutter build web --release",
   "outputDirectory": "build/web",
   "installCommand": "./setup_flutter.sh"
 }
