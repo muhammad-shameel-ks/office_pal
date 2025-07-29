@@ -1,6 +1,7 @@
 #!/bin/bash
 #testing build speed
 #test v2 speed test
+#test v3 speed test
 
 # This script will exit immediately if any command fails.
 set -e
