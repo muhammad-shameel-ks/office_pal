@@ -5,12 +5,11 @@ set -e
 
 # --- 1. SETUP PHASE ---
 
-FLUTTER_VERSION="3.22.7"
+# THE FIX: Corrected the Flutter version number
+FLUTTER_VERSION="3.32.7"
 FLUTTER_SDK_URL="https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz"
 FLUTTER_SDK_ARCHIVE="flutter_linux_${FLUTTER_VERSION}-stable.tar.xz"
-
-# THE FIX: Use a directory name that is NOT in .gitignore
-FLUTTER_SDK_DIR="flutter_sdk"
+FLUTTER_SDK_DIR="flutter_sdk" # Using a name not in .gitignore
 
 # Check if the renamed Flutter SDK directory is already in the cache
 if [ ! -d "$FLUTTER_SDK_DIR" ]; then
