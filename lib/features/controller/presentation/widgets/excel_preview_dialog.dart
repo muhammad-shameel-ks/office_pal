@@ -35,11 +35,9 @@ class ExcelPreviewDialog extends StatelessWidget {
           allowedExtensions: ['xlsx'],
         );
 
-        if (outputFile != null) {
-          final file = File(outputFile);
-          await file.writeAsBytes(excelBytes);
-        }
-      } catch (e) {
+        final file = File(outputFile!);
+        await file.writeAsBytes(excelBytes);
+            } catch (e) {
         debugPrint('Error saving Excel: $e');
       }
     }

@@ -18,15 +18,12 @@ void main() async {
   // This check is important for local development where secrets are loaded from .env
   if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
     // Load .env file only if running locally and dart-defines are not set
-    await dotenv.load(fileName: "assets/.env");
+    await dotenv.load(fileName: ".env"); // The .env file is now at the root
     supabaseUrl = dotenv.env['SUPABASE_URL'];
     supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
   }
 
-  if (supabaseUrl == null ||
-      supabaseUrl.isEmpty ||
-      supabaseAnonKey == null ||
-      supabaseAnonKey.isEmpty) {
+  if (supabaseUrl!.isEmpty || supabaseAnonKey!.isEmpty) {
     throw Exception(
         'ERROR: Supabase URL or Anon Key is null or empty. Ensure secrets are set for GitHub Actions and .env for local dev.');
   }
