@@ -6,7 +6,7 @@ FLUTTER_SDK_URL="https://storage.googleapis.com/flutter_infra_release/releases/s
 FLUTTER_SDK_ARCHIVE="flutter_linux_${FLUTTER_VERSION}-stable.tar.xz"
 FLUTTER_SDK_DIR="flutter"
 
-# Check if the Flutter executable exists to avoid re-downloading
+# Check if the Flutter executable exists in the cache to avoid re-downloading
 if [ ! -f "$FLUTTER_SDK_DIR/bin/flutter" ]; then
   echo "Flutter SDK not found. Downloading and extracting..."
   # Download the Flutter SDK
@@ -22,8 +22,9 @@ fi
 # Add Flutter to the PATH for the current session
 export PATH="$PWD/$FLUTTER_SDK_DIR/bin:$PATH"
 
-# Enable web support
-flutter config --enable-web
+# FIX: Mark the Flutter SDK directory as safe for Git
+git config --global --add safe.directory "$PWD/$FLUTTER_SDK_DIR"
 
-# Get your project's dependencies
+# Run Flutter commands
+flutter config --enable-web
 flutter pub get
