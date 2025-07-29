@@ -1607,11 +1607,14 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
       ),
       child: Row(
         children: [
-          Text(
-            'Student Management',
-            style: GoogleFonts.poppins(
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
+          Flexible(
+            child: Text(
+              'Student Management',
+              style: GoogleFonts.poppins(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
           const Spacer(),
@@ -1627,30 +1630,32 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
                 ),
               ),
             ),
-          SizedBox(
-            width: 240,
-            height: 40,
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: 'Search students...',
-                prefixIcon: const Icon(Icons.search, size: 20),
-                contentPadding: EdgeInsets.zero,
-                filled: true,
-                fillColor: Colors.grey.shade100,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(20),
-                  borderSide: BorderSide.none,
+          Flexible(
+            child: SizedBox(
+              width: 240,
+              height: 40,
+              child: TextField(
+                decoration: InputDecoration(
+                  hintText: 'Search students...',
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  contentPadding: EdgeInsets.zero,
+                  filled: true,
+                  fillColor: Colors.grey.shade100,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
-              ),
-              onChanged: (value) {
-                if (_debounce?.isActive ?? false) _debounce?.cancel();
-                _debounce = Timer(const Duration(milliseconds: 300), () {
-                  setState(() {
-                    searchQuery = value;
-                    filterStudents();
+                onChanged: (value) {
+                  if (_debounce?.isActive ?? false) _debounce?.cancel();
+                  _debounce = Timer(const Duration(milliseconds: 300), () {
+                    setState(() {
+                      searchQuery = value;
+                      filterStudents();
+                    });
                   });
-                });
-              },
+                },
+              ),
             ),
           ),
         ],
@@ -1915,6 +1920,8 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
   }
 
   Widget _buildStudentList() {
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
+
     if (filteredStudents.isEmpty) {
       return Center(
         child: Column(
@@ -1971,39 +1978,50 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
               color: Colors.red.shade50,
               child: Padding(
                 padding: const EdgeInsets.all(12.0),
-                child: Row(
+                child: Column( // Use Column for better responsiveness on small screens
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.person, color: Colors.red.shade700),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${selectedStudentIds.length} student${selectedStudentIds.length > 1 ? "s" : ""} selected',
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.w500,
-                        color: Colors.red.shade700,
-                      ),
+                    Row(
+                      children: [
+                        Icon(Icons.person, color: Colors.red.shade700),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${selectedStudentIds.length} student${selectedStudentIds.length > 1 ? "s" : ""} selected',
+                          style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w500,
+                            color: Colors.red.shade700,
+                          ),
+                        ),
+                        const Spacer(),
+                      ],
                     ),
-                    const Spacer(),
-                    TextButton.icon(
-                      icon: const Icon(Icons.deselect),
-                      label: const Text('Clear Selection'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.red.shade700,
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          selectedStudentIds.clear();
-                          selectAllChecked = false;
-                        });
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton.icon(
-                      icon: const Icon(Icons.delete),
-                      label: const Text('Delete Selected'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.red.shade700,
-                      ),
-                      onPressed: _showDeleteConfirmation,
+                    const SizedBox(height: 8), // Add some spacing
+                    Wrap( // Use Wrap for buttons to allow them to flow
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        TextButton.icon(
+                          icon: const Icon(Icons.deselect),
+                          label: const Text('Clear Selection'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.red.shade700,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              selectedStudentIds.clear();
+                              selectAllChecked = false;
+                            });
+                          },
+                        ),
+                        FilledButton.icon(
+                          icon: const Icon(Icons.delete),
+                          label: const Text('Delete Selected'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.red.shade700,
+                          ),
+                          onPressed: _showDeleteConfirmation,
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -2011,30 +2029,41 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
             ),
           ),
 
-        Card(
-          elevation: 3,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(15),
-            child: Column(
-              children: [
-                _buildStudentListHeader(),
-                SizedBox(
-                  height: 400, // Fixed height for the list
-                  child: ListView.builder(
-                    itemCount: filteredStudents.length,
-                    itemBuilder: (context, index) {
-                      final student = filteredStudents[index];
-                      return _buildStudentListRow(student);
-                    },
+        if (isSmallScreen)
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: filteredStudents.length,
+            itemBuilder: (context, index) {
+              final student = filteredStudents[index];
+              return _buildStudentCard(student);
+            },
+          )
+        else
+          Card(
+            elevation: 3,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(15),
+              child: Column(
+                children: [
+                  _buildStudentListHeader(),
+                  SizedBox(
+                    height: 400, // Fixed height for the list
+                    child: ListView.builder(
+                      itemCount: filteredStudents.length,
+                      itemBuilder: (context, index) {
+                        final student = filteredStudents[index];
+                        return _buildStudentListRow(student);
+                      },
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -2056,6 +2085,7 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
   }
 
   Widget _buildStudentListHeader() {
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
@@ -2083,10 +2113,12 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
           ),
           const Expanded(child: Text('Reg No', style: TextStyle(fontWeight: FontWeight.bold))),
           const Expanded(flex: 2, child: Text('Name', style: TextStyle(fontWeight: FontWeight.bold))),
-          const Expanded(child: Text('Department', style: TextStyle(fontWeight: FontWeight.bold))),
-          const Expanded(child: Text('Semester', style: TextStyle(fontWeight: FontWeight.bold))),
-          const Expanded(child: Text('Status', style: TextStyle(fontWeight: FontWeight.bold))),
-          const SizedBox(width: 120, child: Text('Actions', style: TextStyle(fontWeight: FontWeight.bold))),
+          if (!isSmallScreen) ...[
+            const Expanded(child: Text('Department', style: TextStyle(fontWeight: FontWeight.bold))),
+            const Expanded(child: Text('Semester', style: TextStyle(fontWeight: FontWeight.bold))),
+            const Expanded(child: Text('Status', style: TextStyle(fontWeight: FontWeight.bold))),
+          ],
+          const SizedBox(width: 192, child: Text('Actions', style: TextStyle(fontWeight: FontWeight.bold))),
         ],
       ),
     );
@@ -2112,6 +2144,8 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
       }
     }
 
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
+
     return InkWell(
       onTap: () {
         setState(() {
@@ -2130,46 +2164,309 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
             bottom: BorderSide(color: Colors.grey.shade200),
           ),
         ),
-        child: Row(
-          children: [
-            Checkbox(
-              value: isSelected,
-              onChanged: (value) {
-                setState(() {
-                  if (value ?? false) {
-                    selectedStudentIds.add(studentId);
-                  } else {
-                    selectedStudentIds.remove(studentId);
-                  }
-                });
-              },
-            ),
-            Expanded(child: Text(studentId)),
-            Expanded(flex: 2, child: Text(student['student_name'] as String)),
-            Expanded(child: Text(student['dept_id'] as String)),
-            Expanded(child: Text(student['semester'].toString())),
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: statusColor),
-                ),
-                child: Text(
-                  statusText,
-                  style: TextStyle(
-                    color: statusColor,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+        child: isSmallScreen
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Checkbox(
+                        value: isSelected,
+                        onChanged: (value) {
+                          setState(() {
+                            if (value ?? false) {
+                              selectedStudentIds.add(studentId);
+                            } else {
+                              selectedStudentIds.remove(studentId);
+                            }
+                          });
+                        },
+                      ),
+                      Expanded(
+                        child: Text(
+                          studentId,
+                          style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Text(
+                          student['student_name'] as String,
+                          style: GoogleFonts.poppins(fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 48.0, top: 4.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Dept: ${student['dept_id'] as String}'),
+                        Text('Sem: ${student['semester'].toString()}'),
+                        const SizedBox(height: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: statusColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: statusColor),
+                          ),
+                          child: Text(
+                            statusText,
+                            style: TextStyle(
+                              color: statusColor,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.visibility, size: 20),
+                              tooltip: 'View Courses',
+                              onPressed: () => _showCoursesDialog(student),
+                              splashRadius: 24,
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.edit, size: 20),
+                              tooltip: 'Edit Student',
+                              onPressed: () => _showEditDialog(student),
+                              splashRadius: 24,
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.assignment, size: 20),
+                              tooltip: 'Exam Registration',
+                              onPressed: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) => StudentExamRegistrationPage(
+                                      studentId: studentId,
+                                    ),
+                                  ),
+                                );
+                              },
+                              splashRadius: 24,
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete, size: 20, color: Colors.red),
+                              tooltip: 'Delete Student',
+                              onPressed: () {
+                                setState(() {
+                                  selectedStudentIds = {studentId};
+                                });
+                                _showDeleteConfirmation();
+                              },
+                              splashRadius: 24,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              )
+            : Row(
+                children: [
+                  Checkbox(
+                    value: isSelected,
+                    onChanged: (value) {
+                      setState(() {
+                        if (value ?? false) {
+                          selectedStudentIds.add(studentId);
+                        } else {
+                          selectedStudentIds.remove(studentId);
+                        }
+                      });
+                    },
+                  ),
+                  Expanded(child: Text(studentId)),
+                  Expanded(flex: 2, child: Text(student['student_name'] as String)),
+                  Expanded(child: Text(student['dept_id'] as String)),
+                  Expanded(child: Text(student['semester'].toString())),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: statusColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: statusColor),
+                      ),
+                      child: Text(
+                        statusText,
+                        style: TextStyle(
+                          color: statusColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 192,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.visibility, size: 20),
+                          tooltip: 'View Courses',
+                          onPressed: () => _showCoursesDialog(student),
+                          splashRadius: 24,
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.edit, size: 20),
+                          tooltip: 'Edit Student',
+                          onPressed: () => _showEditDialog(student),
+                          splashRadius: 24,
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.assignment, size: 20),
+                          tooltip: 'Exam Registration',
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => StudentExamRegistrationPage(
+                                  studentId: studentId,
+                                ),
+                              ),
+                            );
+                          },
+                          splashRadius: 24,
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete, size: 20, color: Colors.red),
+                          tooltip: 'Delete Student',
+                          onPressed: () {
+                            setState(() {
+                              selectedStudentIds = {studentId};
+                            });
+                            _showDeleteConfirmation();
+                          },
+                          splashRadius: 24,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ),
-            SizedBox(
-              width: 192, // Increased width to accommodate all 4 icons (4 * 48 = 192)
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
+      ),
+    );
+  }
+
+  Widget _buildStudentCard(Map<String, dynamic> student) {
+    final studentId = student['student_reg_no'] as String;
+    final courses = studentCourses[studentId] ?? [];
+    final isSelected = selectedStudentIds.contains(studentId);
+
+    bool hasBacklog = false;
+    String statusText = 'Not Registered';
+    Color statusColor = Colors.grey;
+
+    if (courses.isNotEmpty) {
+      hasBacklog = courses.any((course) => course['is_reguler'] == false);
+      if (hasBacklog) {
+        statusText = 'Backlog';
+        statusColor = Colors.orange;
+      } else {
+        statusText = 'Regular';
+        statusColor = Colors.green;
+      }
+    }
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            if (isSelected) {
+              selectedStudentIds.remove(studentId);
+            } else {
+              selectedStudentIds.add(studentId);
+            }
+          });
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Checkbox(
+                    value: isSelected,
+                    onChanged: (value) {
+                      setState(() {
+                        if (value ?? false) {
+                          selectedStudentIds.add(studentId);
+                        } else {
+                          selectedStudentIds.remove(studentId);
+                        }
+                      });
+                    },
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          student['student_name'] as String,
+                          style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        Text(
+                          studentId,
+                          style: GoogleFonts.poppins(
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Dept: ${student['dept_id'] as String}'),
+                      Text('Sem: ${student['semester'].toString()}'),
+                    ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: statusColor),
+                    ),
+                    child: Text(
+                      statusText,
+                      style: TextStyle(
+                        color: statusColor,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Divider(),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
                   IconButton(
                     icon: const Icon(Icons.visibility, size: 20),
@@ -2210,8 +2507,8 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
                   ),
                 ],
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -2371,8 +2668,10 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
                           items: departments.map((dept) {
                             return DropdownMenuItem<String>(
                               value: dept['dept_id'] as String,
-                              child: Text(
-                                  '${dept['dept_id']} - ${dept['dept_name']}'),
+                              child: Expanded(
+                                child: Text(
+                                    '${dept['dept_id']} - ${dept['dept_name']}'),
+                              ),
                             );
                           }).toList(),
                           onChanged: (value) {
@@ -2867,7 +3166,9 @@ class _AddStudentDialogState extends State<AddStudentDialog> {
                 items: _departments.map((dept) {
                   return DropdownMenuItem<String>(
                     value: dept['dept_id'] as String,
-                    child: Text('${dept['dept_id']} - ${dept['dept_name']}'),
+                    child: Expanded(
+                      child: Text('${dept['dept_id']} - ${dept['dept_name']}'),
+                    ),
                   );
                 }).toList(),
                 onChanged: (value) {
