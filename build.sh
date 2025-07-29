@@ -5,6 +5,7 @@ set -e
 
 # --- 1. SETUP PHASE ---
 
+# Using your specified Flutter version
 FLUTTER_VERSION="3.32.7"
 FLUTTER_SDK_URL="https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz"
 FLUTTER_SDK_ARCHIVE="flutter_linux_${FLUTTER_VERSION}-stable.tar.xz"
@@ -34,15 +35,15 @@ flutter pub get
 # --- 2. BUILD PHASE ---
 
 # Check the VERCEL_ENV variable to decide which build to run
-# This variable is automatically set by Vercel.
-# It's "production" for the main branch, and "preview" for all other branches.
-
 if [ "$VERCEL_ENV" = "production" ]; then
   echo "Building for production..."
+  # The release command is still correct
   flutter build web --release
 else
   echo "Building for preview..."
-  flutter build web --web-renderer html --no-tree-shake-icons
+  # UPDATED COMMAND: Removed the invalid --web-renderer and --no-tree-shake-icons flags.
+  # A standard build command without --release is now the correct way to get a fast debug/preview build.
+  flutter build web
 fi
 
 echo "Build finished successfully."
