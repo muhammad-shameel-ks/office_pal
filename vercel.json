@@ -1,6 +1,5 @@
 {
-  "buildCommand": "flutter/bin/flutter build web",
-  "outputDirectory": "build/web",
-  "installCommand": "./setup_flutter.sh",
-  "cache": ["flutter", ".pub-cache"]
+  "buildCommand": "./build.sh",
+  "outputDirectory": "build/web"
 }
+  

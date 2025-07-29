@@ -6,6 +6,7 @@ import 'package:excel/excel.dart' as excel;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
+import 'dart:async';
 import 'dart:developer' as developer;
 import 'student_exam_registration_page.dart';
 
@@ -42,6 +43,9 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
   List<String> departments = [];
   List<int> semesters = [];
   Map<String, List<Map<String, dynamic>>> studentCourses = {};
+  Map<String, int> _departmentCounts = {};
+  Map<int, int> _semesterCounts = {};
+  Map<String, int> _regStatusCounts = {};
 
   // Animation controllers
   late AnimationController _fadeInController;
@@ -53,6 +57,7 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
 
   // Current section for sidebar
   String _currentSection = 'all';
+  Timer? _debounce;
 
   // Add clear filters method early in the class
   void _clearFilters() {
@@ -113,6 +118,7 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
   void dispose() {
     _fadeInController.dispose();
     _slideController.dispose();
+    _debounce?.cancel();
     super.dispose();
   }
 
@@ -198,6 +204,7 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
 
           // Filter the students
           filterStudents();
+          _calculateFilterCounts();
         });
       }
     } catch (error) {
@@ -1521,41 +1528,61 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
     );
   }
 
+  void _calculateFilterCounts() {
+    _departmentCounts.clear();
+    _semesterCounts.clear();
+    _regStatusCounts.clear();
+
+    _regStatusCounts['Regular'] = 0;
+    _regStatusCounts['Backlog'] = 0;
+    _regStatusCounts['Not Registered'] = 0;
+
+    for (final student in students) {
+      final deptId = student['dept_id'].toString();
+      final semester = student['semester'] as int;
+      final studentId = student['student_reg_no'] as String;
+      final courses = studentCourses[studentId] ?? [];
+
+      _departmentCounts[deptId] = (_departmentCounts[deptId] ?? 0) + 1;
+      _semesterCounts[semester] = (_semesterCounts[semester] ?? 0) + 1;
+
+      if (courses.isEmpty) {
+        _regStatusCounts['Not Registered'] =
+            (_regStatusCounts['Not Registered'] ?? 0) + 1;
+      } else {
+        final hasBacklog = courses.any((c) => c['is_reguler'] == false);
+        if (hasBacklog) {
+          _regStatusCounts['Backlog'] = (_regStatusCounts['Backlog'] ?? 0) + 1;
+        } else {
+          _regStatusCounts['Regular'] = (_regStatusCounts['Regular'] ?? 0) + 1;
+        }
+      }
+    }
+  }
+
   String _getCountForFilter(String id) {
     if (id == 'all') return students.length.toString();
 
     if (id.startsWith('dept_')) {
       final dept = id.substring(5);
-      return students.where((s) => s['dept_id'] == dept).length.toString();
+      return (_departmentCounts[dept] ?? 0).toString();
     }
 
     if (id.startsWith('sem_')) {
       final sem = int.parse(id.substring(4));
-      return students.where((s) => s['semester'] == sem).length.toString();
+      return (_semesterCounts[sem] ?? 0).toString();
     }
 
     if (id == 'reg_regular') {
-      return students
-          .where((student) {
-            final studentId = student['student_reg_no'] as String;
-            final courses = studentCourses[studentId] ?? [];
-            return courses.isNotEmpty &&
-                courses.every((course) => course['is_reguler'] == true);
-          })
-          .length
-          .toString();
+      return (_regStatusCounts['Regular'] ?? 0).toString();
     }
 
     if (id == 'reg_backlog') {
-      return students
-          .where((student) {
-            final studentId = student['student_reg_no'] as String;
-            final courses = studentCourses[studentId] ?? [];
-            return courses.isNotEmpty &&
-                courses.any((course) => course['is_reguler'] == false);
-          })
-          .length
-          .toString();
+      return (_regStatusCounts['Backlog'] ?? 0).toString();
+    }
+    
+    if (id == 'reg_none') {
+      return (_regStatusCounts['Not Registered'] ?? 0).toString();
     }
 
     return '0';
@@ -1580,11 +1607,14 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
       ),
       child: Row(
         children: [
-          Text(
-            'Student Management',
-            style: GoogleFonts.poppins(
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
+          Flexible(
+            child: Text(
+              'Student Management',
+              style: GoogleFonts.poppins(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
           const Spacer(),
@@ -1600,27 +1630,32 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
                 ),
               ),
             ),
-          SizedBox(
-            width: 240,
-            height: 40,
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: 'Search students...',
-                prefixIcon: const Icon(Icons.search, size: 20),
-                contentPadding: EdgeInsets.zero,
-                filled: true,
-                fillColor: Colors.grey.shade100,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(20),
-                  borderSide: BorderSide.none,
+          Flexible(
+            child: SizedBox(
+              width: 240,
+              height: 40,
+              child: TextField(
+                decoration: InputDecoration(
+                  hintText: 'Search students...',
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  contentPadding: EdgeInsets.zero,
+                  filled: true,
+                  fillColor: Colors.grey.shade100,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
+                onChanged: (value) {
+                  if (_debounce?.isActive ?? false) _debounce?.cancel();
+                  _debounce = Timer(const Duration(milliseconds: 300), () {
+                    setState(() {
+                      searchQuery = value;
+                      filterStudents();
+                    });
+                  });
+                },
               ),
-              onChanged: (value) {
-                setState(() {
-                  searchQuery = value;
-                  filterStudents();
-                });
-              },
             ),
           ),
         ],
@@ -1658,9 +1693,12 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
           contentPadding: const EdgeInsets.symmetric(vertical: 12),
         ),
         onChanged: (value) {
-          setState(() {
-            searchQuery = value;
-            filterStudents();
+          if (_debounce?.isActive ?? false) _debounce?.cancel();
+          _debounce = Timer(const Duration(milliseconds: 300), () {
+            setState(() {
+              searchQuery = value;
+              filterStudents();
+            });
           });
         },
       ),
@@ -1882,6 +1920,8 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
   }
 
   Widget _buildStudentList() {
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
+
     if (filteredStudents.isEmpty) {
       return Center(
         child: Column(
@@ -1938,39 +1978,50 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
               color: Colors.red.shade50,
               child: Padding(
                 padding: const EdgeInsets.all(12.0),
-                child: Row(
+                child: Column( // Use Column for better responsiveness on small screens
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.person, color: Colors.red.shade700),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${selectedStudentIds.length} student${selectedStudentIds.length > 1 ? "s" : ""} selected',
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.w500,
-                        color: Colors.red.shade700,
-                      ),
+                    Row(
+                      children: [
+                        Icon(Icons.person, color: Colors.red.shade700),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${selectedStudentIds.length} student${selectedStudentIds.length > 1 ? "s" : ""} selected',
+                          style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w500,
+                            color: Colors.red.shade700,
+                          ),
+                        ),
+                        const Spacer(),
+                      ],
                     ),
-                    const Spacer(),
-                    TextButton.icon(
-                      icon: const Icon(Icons.deselect),
-                      label: const Text('Clear Selection'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.red.shade700,
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          selectedStudentIds.clear();
-                          selectAllChecked = false;
-                        });
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton.icon(
-                      icon: const Icon(Icons.delete),
-                      label: const Text('Delete Selected'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.red.shade700,
-                      ),
-                      onPressed: _showDeleteConfirmation,
+                    const SizedBox(height: 8), // Add some spacing
+                    Wrap( // Use Wrap for buttons to allow them to flow
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        TextButton.icon(
+                          icon: const Icon(Icons.deselect),
+                          label: const Text('Clear Selection'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.red.shade700,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              selectedStudentIds.clear();
+                              selectAllChecked = false;
+                            });
+                          },
+                        ),
+                        FilledButton.icon(
+                          icon: const Icon(Icons.delete),
+                          label: const Text('Delete Selected'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.red.shade700,
+                          ),
+                          onPressed: _showDeleteConfirmation,
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -1978,233 +2029,41 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
             ),
           ),
 
-        Card(
-          elevation: 3,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(1),
+        if (isSmallScreen)
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: filteredStudents.length,
+            itemBuilder: (context, index) {
+              final student = filteredStudents[index];
+              return _buildStudentCard(student);
+            },
+          )
+        else
+          Card(
+            elevation: 3,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(15),
-              child: Theme(
-                data: Theme.of(context).copyWith(
-                  dividerColor: Colors.grey.shade200,
-                  dataTableTheme: DataTableThemeData(
-                    headingTextStyle: GoogleFonts.poppins(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue.shade800,
+              child: Column(
+                children: [
+                  _buildStudentListHeader(),
+                  SizedBox(
+                    height: 400, // Fixed height for the list
+                    child: ListView.builder(
+                      itemCount: filteredStudents.length,
+                      itemBuilder: (context, index) {
+                        final student = filteredStudents[index];
+                        return _buildStudentListRow(student);
+                      },
                     ),
-                    dataTextStyle: GoogleFonts.poppins(),
-                    headingRowHeight: 56,
-                    dataRowHeight: 64,
-                    dividerThickness: 1,
                   ),
-                ),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    // Create a fixed-height container to prevent layout shifts
-                    // during scrolling which can cause performance issues
-                    final double tableHeight = filteredStudents.length > 5
-                        ? 400 // Fixed height for many rows
-                        : filteredStudents.length * 70.0 +
-                            56; // Height for fewer rows
-
-                    return SizedBox(
-                      height: tableHeight,
-                      child: SingleChildScrollView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        child: DataTable(
-                          headingRowColor:
-                              WidgetStateProperty.resolveWith<Color>(
-                            (Set<WidgetState> states) => Colors.blue.shade50,
-                          ),
-                          columnSpacing: 16,
-                          horizontalMargin: 20,
-                          dataRowMaxHeight: 70,
-                          showCheckboxColumn: true,
-                          columns: [
-                            DataColumn(
-                                label: const SizedBox.shrink(),
-                                onSort: (columnIndex, ascending) {
-                                  setState(() {
-                                    selectAllChecked = !selectAllChecked;
-
-                                    if (selectAllChecked) {
-                                      // Select all filtered students
-                                      selectedStudentIds = filteredStudents
-                                          .map((s) =>
-                                              s['student_reg_no'] as String)
-                                          .toSet();
-                                    } else {
-                                      // Clear selection
-                                      selectedStudentIds.clear();
-                                    }
-                                  });
-                                }),
-                            const DataColumn(label: Text('Reg No')),
-                            const DataColumn(label: Text('Name')),
-                            const DataColumn(label: Text('Department')),
-                            const DataColumn(label: Text('Semester')),
-                            const DataColumn(label: Text('Status')),
-                            const DataColumn(label: Text('Actions')),
-                          ],
-                          // Optimize DataRow creation by using reusable objects where possible
-                          rows: List.generate(
-                            filteredStudents.length,
-                            (index) {
-                              final student = filteredStudents[index];
-                              final studentId =
-                                  student['student_reg_no'] as String;
-                              final courses = studentCourses[studentId] ?? [];
-                              final isSelected =
-                                  selectedStudentIds.contains(studentId);
-
-                              bool hasBacklog = false;
-                              String statusText = 'Not Registered';
-                              Color statusColor = Colors.grey;
-
-                              if (courses.isNotEmpty) {
-                                hasBacklog = courses.any(
-                                    (course) => course['is_reguler'] == false);
-                                if (hasBacklog) {
-                                  statusText = 'Backlog';
-                                  statusColor = Colors.orange;
-                                } else {
-                                  statusText = 'Regular';
-                                  statusColor = Colors.green;
-                                }
-                              }
-
-                              return DataRow(
-                                selected: isSelected,
-                                onSelectChanged: (bool? selected) {
-                                  setState(() {
-                                    if (selected ?? false) {
-                                      selectedStudentIds.add(studentId);
-                                    } else {
-                                      selectedStudentIds.remove(studentId);
-                                      // Update selectAll checkbox if needed
-                                      if (selectAllChecked) {
-                                        selectAllChecked = false;
-                                      }
-                                    }
-                                  });
-                                },
-                                cells: [
-                                  // Removed the redundant checkbox here
-                                  const DataCell(SizedBox.shrink()),
-                                  DataCell(
-                                    Text(
-                                      studentId,
-                                      style: GoogleFonts.poppins(
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                                  DataCell(
-                                    Text(
-                                      student['student_name'] as String,
-                                      style: GoogleFonts.poppins(),
-                                    ),
-                                  ),
-                                  DataCell(
-                                    Text(
-                                      student['dept_id'] as String,
-                                      style: GoogleFonts.poppins(),
-                                    ),
-                                  ),
-                                  DataCell(
-                                    Text(
-                                      student['semester'].toString(),
-                                      style: GoogleFonts.poppins(),
-                                    ),
-                                  ),
-                                  DataCell(
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: statusColor.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(color: statusColor),
-                                      ),
-                                      child: Text(
-                                        statusText,
-                                        style: GoogleFonts.poppins(
-                                          color: statusColor,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  DataCell(
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        IconButton(
-                                          icon: const Icon(Icons.visibility,
-                                              size: 20),
-                                          tooltip: 'View Courses',
-                                          onPressed: () =>
-                                              _showCoursesDialog(student),
-                                          splashRadius: 24,
-                                        ),
-                                        IconButton(
-                                          icon:
-                                              const Icon(Icons.edit, size: 20),
-                                          tooltip: 'Edit Student',
-                                          onPressed: () =>
-                                              _showEditDialog(student),
-                                          splashRadius: 24,
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(Icons.assignment,
-                                              size: 20),
-                                          tooltip: 'Exam Registration',
-                                          onPressed: () {
-                                            Navigator.of(context).push(
-                                              MaterialPageRoute(
-                                                builder: (context) =>
-                                                    StudentExamRegistrationPage(
-                                                  studentId: studentId,
-                                                ),
-                                              ),
-                                            );
-                                          },
-                                          splashRadius: 24,
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(Icons.delete,
-                                              size: 20, color: Colors.red),
-                                          tooltip: 'Delete Student',
-                                          onPressed: () {
-                                            setState(() {
-                                              selectedStudentIds = {studentId};
-                                            });
-                                            _showDeleteConfirmation();
-                                          },
-                                          splashRadius: 24,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
+                ],
               ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -2223,6 +2082,436 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
             child: const Icon(Icons.add),
           )
         : const SizedBox.shrink();
+  }
+
+  Widget _buildStudentListHeader() {
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        border: Border(
+          bottom: BorderSide(color: Colors.grey.shade200),
+        ),
+      ),
+      child: Row(
+        children: [
+          Checkbox(
+            value: selectAllChecked,
+            onChanged: (value) {
+              setState(() {
+                selectAllChecked = value ?? false;
+                if (selectAllChecked) {
+                  selectedStudentIds = filteredStudents
+                      .map((s) => s['student_reg_no'] as String)
+                      .toSet();
+                } else {
+                  selectedStudentIds.clear();
+                }
+              });
+            },
+          ),
+          const Expanded(child: Text('Reg No', style: TextStyle(fontWeight: FontWeight.bold))),
+          const Expanded(flex: 2, child: Text('Name', style: TextStyle(fontWeight: FontWeight.bold))),
+          if (!isSmallScreen) ...[
+            const Expanded(child: Text('Department', style: TextStyle(fontWeight: FontWeight.bold))),
+            const Expanded(child: Text('Semester', style: TextStyle(fontWeight: FontWeight.bold))),
+            const Expanded(child: Text('Status', style: TextStyle(fontWeight: FontWeight.bold))),
+          ],
+          const SizedBox(width: 192, child: Text('Actions', style: TextStyle(fontWeight: FontWeight.bold))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStudentListRow(Map<String, dynamic> student) {
+    final studentId = student['student_reg_no'] as String;
+    final courses = studentCourses[studentId] ?? [];
+    final isSelected = selectedStudentIds.contains(studentId);
+
+    bool hasBacklog = false;
+    String statusText = 'Not Registered';
+    Color statusColor = Colors.grey;
+
+    if (courses.isNotEmpty) {
+      hasBacklog = courses.any((course) => course['is_reguler'] == false);
+      if (hasBacklog) {
+        statusText = 'Backlog';
+        statusColor = Colors.orange;
+      } else {
+        statusText = 'Regular';
+        statusColor = Colors.green;
+      }
+    }
+
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
+
+    return InkWell(
+      onTap: () {
+        setState(() {
+          if (isSelected) {
+            selectedStudentIds.remove(studentId);
+          } else {
+            selectedStudentIds.add(studentId);
+          }
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.blue.shade50 : Colors.transparent,
+          border: Border(
+            bottom: BorderSide(color: Colors.grey.shade200),
+          ),
+        ),
+        child: isSmallScreen
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Checkbox(
+                        value: isSelected,
+                        onChanged: (value) {
+                          setState(() {
+                            if (value ?? false) {
+                              selectedStudentIds.add(studentId);
+                            } else {
+                              selectedStudentIds.remove(studentId);
+                            }
+                          });
+                        },
+                      ),
+                      Expanded(
+                        child: Text(
+                          studentId,
+                          style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Text(
+                          student['student_name'] as String,
+                          style: GoogleFonts.poppins(fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 48.0, top: 4.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Dept: ${student['dept_id'] as String}'),
+                        Text('Sem: ${student['semester'].toString()}'),
+                        const SizedBox(height: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: statusColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: statusColor),
+                          ),
+                          child: Text(
+                            statusText,
+                            style: TextStyle(
+                              color: statusColor,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.visibility, size: 20),
+                              tooltip: 'View Courses',
+                              onPressed: () => _showCoursesDialog(student),
+                              splashRadius: 24,
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.edit, size: 20),
+                              tooltip: 'Edit Student',
+                              onPressed: () => _showEditDialog(student),
+                              splashRadius: 24,
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.assignment, size: 20),
+                              tooltip: 'Exam Registration',
+                              onPressed: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) => StudentExamRegistrationPage(
+                                      studentId: studentId,
+                                    ),
+                                  ),
+                                );
+                              },
+                              splashRadius: 24,
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete, size: 20, color: Colors.red),
+                              tooltip: 'Delete Student',
+                              onPressed: () {
+                                setState(() {
+                                  selectedStudentIds = {studentId};
+                                });
+                                _showDeleteConfirmation();
+                              },
+                              splashRadius: 24,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              )
+            : Row(
+                children: [
+                  Checkbox(
+                    value: isSelected,
+                    onChanged: (value) {
+                      setState(() {
+                        if (value ?? false) {
+                          selectedStudentIds.add(studentId);
+                        } else {
+                          selectedStudentIds.remove(studentId);
+                        }
+                      });
+                    },
+                  ),
+                  Expanded(child: Text(studentId)),
+                  Expanded(flex: 2, child: Text(student['student_name'] as String)),
+                  Expanded(child: Text(student['dept_id'] as String)),
+                  Expanded(child: Text(student['semester'].toString())),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: statusColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: statusColor),
+                      ),
+                      child: Text(
+                        statusText,
+                        style: TextStyle(
+                          color: statusColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 192,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.visibility, size: 20),
+                          tooltip: 'View Courses',
+                          onPressed: () => _showCoursesDialog(student),
+                          splashRadius: 24,
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.edit, size: 20),
+                          tooltip: 'Edit Student',
+                          onPressed: () => _showEditDialog(student),
+                          splashRadius: 24,
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.assignment, size: 20),
+                          tooltip: 'Exam Registration',
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => StudentExamRegistrationPage(
+                                  studentId: studentId,
+                                ),
+                              ),
+                            );
+                          },
+                          splashRadius: 24,
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete, size: 20, color: Colors.red),
+                          tooltip: 'Delete Student',
+                          onPressed: () {
+                            setState(() {
+                              selectedStudentIds = {studentId};
+                            });
+                            _showDeleteConfirmation();
+                          },
+                          splashRadius: 24,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _buildStudentCard(Map<String, dynamic> student) {
+    final studentId = student['student_reg_no'] as String;
+    final courses = studentCourses[studentId] ?? [];
+    final isSelected = selectedStudentIds.contains(studentId);
+
+    bool hasBacklog = false;
+    String statusText = 'Not Registered';
+    Color statusColor = Colors.grey;
+
+    if (courses.isNotEmpty) {
+      hasBacklog = courses.any((course) => course['is_reguler'] == false);
+      if (hasBacklog) {
+        statusText = 'Backlog';
+        statusColor = Colors.orange;
+      } else {
+        statusText = 'Regular';
+        statusColor = Colors.green;
+      }
+    }
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            if (isSelected) {
+              selectedStudentIds.remove(studentId);
+            } else {
+              selectedStudentIds.add(studentId);
+            }
+          });
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Checkbox(
+                    value: isSelected,
+                    onChanged: (value) {
+                      setState(() {
+                        if (value ?? false) {
+                          selectedStudentIds.add(studentId);
+                        } else {
+                          selectedStudentIds.remove(studentId);
+                        }
+                      });
+                    },
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          student['student_name'] as String,
+                          style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        Text(
+                          studentId,
+                          style: GoogleFonts.poppins(
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Dept: ${student['dept_id'] as String}'),
+                      Text('Sem: ${student['semester'].toString()}'),
+                    ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: statusColor),
+                    ),
+                    child: Text(
+                      statusText,
+                      style: TextStyle(
+                        color: statusColor,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Divider(),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.visibility, size: 20),
+                    tooltip: 'View Courses',
+                    onPressed: () => _showCoursesDialog(student),
+                    splashRadius: 24,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.edit, size: 20),
+                    tooltip: 'Edit Student',
+                    onPressed: () => _showEditDialog(student),
+                    splashRadius: 24,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.assignment, size: 20),
+                    tooltip: 'Exam Registration',
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => StudentExamRegistrationPage(
+                            studentId: studentId,
+                          ),
+                        ),
+                      );
+                    },
+                    splashRadius: 24,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete, size: 20, color: Colors.red),
+                    tooltip: 'Delete Student',
+                    onPressed: () {
+                      setState(() {
+                        selectedStudentIds = {studentId};
+                      });
+                      _showDeleteConfirmation();
+                    },
+                    splashRadius: 24,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _showCoursesDialog(Map<String, dynamic> student) {
@@ -2379,8 +2668,10 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
                           items: departments.map((dept) {
                             return DropdownMenuItem<String>(
                               value: dept['dept_id'] as String,
-                              child: Text(
-                                  '${dept['dept_id']} - ${dept['dept_name']}'),
+                              child: Expanded(
+                                child: Text(
+                                    '${dept['dept_id']} - ${dept['dept_name']}'),
+                              ),
                             );
                           }).toList(),
                           onChanged: (value) {
@@ -2875,7 +3166,9 @@ class _AddStudentDialogState extends State<AddStudentDialog> {
                 items: _departments.map((dept) {
                   return DropdownMenuItem<String>(
                     value: dept['dept_id'] as String,
-                    child: Text('${dept['dept_id']} - ${dept['dept_name']}'),
+                    child: Expanded(
+                      child: Text('${dept['dept_id']} - ${dept['dept_name']}'),
+                    ),
                   );
                 }).toList(),
                 onChanged: (value) {
