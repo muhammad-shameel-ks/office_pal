@@ -86,3 +86,9 @@ coverage/
 !.env.example
 DB.bat
 .cursorrules
+
+
+#vercel 
+
+/flutter
+/.pub-cache
