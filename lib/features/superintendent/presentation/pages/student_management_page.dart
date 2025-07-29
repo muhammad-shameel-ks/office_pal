@@ -2167,7 +2167,7 @@ class _StudentManagementPageState extends ConsumerState<StudentManagementPage>
               ),
             ),
             SizedBox(
-              width: 120,
+              width: 192, // Increased width to accommodate all 4 icons (4 * 48 = 192)
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
