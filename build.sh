@@ -1,5 +1,5 @@
 #!/bin/bash
-
+#build test v1
 # This script will exit immediately if any command fails.
 set -e
 
