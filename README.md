@@ -103,4 +103,4 @@ You may **NOT**:
 - ❌ Use it commercially
 - ❌ Redistribute altered versions
 
-🔒 Unauthorized use may result in DMCA action.
+🔒 Unauthorized use may result in DMCA action!
