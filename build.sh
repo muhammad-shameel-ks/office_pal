@@ -1,4 +1,5 @@
 #!/bin/bash
+#testing build speed
 
 # This script will exit immediately if any command fails.
 set -e
